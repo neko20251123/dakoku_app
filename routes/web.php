@@ -1,9 +1,14 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\TimeCalcController;
 
-Route::get('/', function () {
-    return view('welcome');
-});
+// 初期のwelcomeのルート 不要なのであとで消す
+// Route::get('/', function () {
+//     return view('welcome');
+// });
 
-Route::get('/', [\App\Http\Controllers\TimeCalcController::class, 'index']);
+Route::get('/', [TimeCalcController::class, 'index'])->name('timecalc.index');
+
+Route::post('/calculate', [TimeCalcController::class, 'calculate'])
+    ->name('timecalc.calculate');

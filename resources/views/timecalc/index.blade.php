@@ -20,10 +20,10 @@
     @endif
 
     {{-- メインフォーム（※まだ name や action は仮） --}}
-    <form method="POST" action="#">
+    <form method="POST" action="{{ route('timecalc.calculate') }}">
         @csrf
 
-        {{-- 入力行エリア：とりあえず3行ぶんの枠だけ --}}
+        {{-- 入力行エリア： --}}
         <div class="task-rows">
 
             {{-- 1行目 --}}
@@ -53,61 +53,6 @@
                     時間：<span>--</span> h
                 </span>
             </div>
-
-            {{-- 2行目 --}}
-            <div class="task-row">
-                <label>
-                    カテゴリ
-                    <select name="rows[1][category]">
-                        <option value="">選択してください</option>
-                        <option value="task1">タスク1（仮）</option>
-                        <option value="task2">タスク2（仮）</option>
-                        <option value="task3">タスク3（仮）</option>
-                    </select>
-                </label>
-
-                <label>
-                    開始
-                    <input type="time" name="rows[1][start]" placeholder="13:00">
-                </label>
-
-                <label>
-                    終了
-                    <input type="time" name="rows[1][end]" placeholder="15:00">
-                </label>
-
-                <span class="task-duration">
-                    時間：<span>--</span> h
-                </span>
-            </div>
-
-            {{-- 3行目 --}}
-            <div class="task-row">
-                <label>
-                    カテゴリ
-                    <select name="rows[2][category]">
-                        <option value="">選択してください</option>
-                        <option value="task1">タスク1（仮）</option>
-                        <option value="task2">タスク2（仮）</option>
-                        <option value="task3">タスク3（仮）</option>
-                    </select>
-                </label>
-
-                <label>
-                    開始
-                    <input type="time" name="rows[2][start]" placeholder="15:00">
-                </label>
-
-                <label>
-                    終了
-                    <input type="time" name="rows[2][end]" placeholder="18:00">
-                </label>
-
-                <span class="task-duration">
-                    時間：<span>--</span> h
-                </span>
-            </div>
-
         </div>
 
         {{-- 行追加ボタン（中身はまだ未実装。あとでJSやサーバ側で実装） --}}
