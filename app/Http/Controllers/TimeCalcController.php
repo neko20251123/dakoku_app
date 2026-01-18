@@ -7,6 +7,12 @@ use Illuminate\Support\Facades\Validator;
 
 class TimeCalcController extends Controller
 {
+    // 1行あたりの最大作業時間（入力ミス防止）
+    private const MAX_HOURS_PER_ROW = 20;
+
+    // 15分刻み（0.25h）前提
+    private const STEP_MINUTES = 15;
+
     public function index()
     {
         return view('timecalc.index');
@@ -16,14 +22,17 @@ class TimeCalcController extends Controller
     {
         $rows = $request->input('rows', []);
 
-        // ① 空行を除外（indexは保持する：0,1,2...）
-        $filledRows = collect($rows)->filter(function ($row) {
-            $category = $row['category'] ?? null;
-            $start    = $row['start'] ?? null;
-            $end      = $row['end'] ?? null;
+        // ① 空行を除外（category/start/end が全部空なら無視） + index詰め（0,1,2..）
+        $filledRows = collect($rows)
+            ->filter(function ($row) {
+                $category = $row['category'] ?? null;
+                $start    = $row['start'] ?? null;
+                $end      = $row['end'] ?? null;
 
-            return !empty($category) || !empty($start) || !empty($end);
-        })->all();
+                return !empty($category) || !empty($start) || !empty($end);
+            })
+            ->values()
+            ->all();
 
         // ② 1行も入力がなければエラー
         if (count($filledRows) === 0) {
@@ -32,7 +41,7 @@ class TimeCalcController extends Controller
                 ->withInput();
         }
 
-        // ③ 入力がある行だけ厳密バリデーション
+        // ③ 入力がある行だけ、基本バリデーション（必須 + 形式）
         $validator = Validator::make(
             ['rows' => $filledRows],
             [
@@ -50,7 +59,7 @@ class TimeCalcController extends Controller
             ]
         );
 
-        // ④ 0時間NG / 夜間またぎOK / 20時間超NG
+        // ④ 追加仕様（15分刻み / 0時間NG / 夜間またぎOK / 20時間上限）
         $validator->after(function ($v) use ($filledRows) {
             foreach ($filledRows as $i => $row) {
                 $start = $row['start'] ?? null;
@@ -60,18 +69,34 @@ class TimeCalcController extends Controller
                     continue;
                 }
 
+                // 15分刻みチェック
+                if (!$this->isQuarterTime($start)) {
+                    $v->errors()->add("rows.$i.start", '開始時刻は15分刻み（00/15/30/45）で入力してください。');
+                }
+                if (!$this->isQuarterTime($end)) {
+                    $v->errors()->add("rows.$i.end", '終了時刻は15分刻み（00/15/30/45）で入力してください。');
+                }
+
                 // 0時間は禁止
                 if ($start === $end) {
-                    $v->errors()->add("rows.$i.end", '終了時刻は開始時刻より後にしてください。（0時間は不可）');
+                    $v->errors()->add("rows.$i.end", '終了時刻は開始時刻と同じにできません（0時間は不可）。');
                     continue;
                 }
 
-                // 夜間またぎ含めた差分分数を計算して上限チェック
+                // 夜間またぎOKで差分を出す
                 $diffMinutes = $this->diffMinutesAllowOvernight($start, $end);
 
-                // 20時間超は禁止（入力ミス防止）
-                if ($diffMinutes > 20 * 60) {
-                    $v->errors()->add("rows.$i.end", '勤務時間が長すぎます（20時間以内にしてください）。入力ミスの可能性があります。');
+                // 念のため：15分で割り切れないならエラー（理論上ここには来ないはず）
+                if ($diffMinutes % self::STEP_MINUTES !== 0) {
+                    $v->errors()->add("rows.$i.end", '開始・終了は15分刻みで入力してください。');
+                }
+
+                // 上限チェック（入力ミス防止）
+                if ($diffMinutes > self::MAX_HOURS_PER_ROW * 60) {
+                    $v->errors()->add(
+                        "rows.$i.end",
+                        '勤務時間が長すぎます（1行あたり20時間以内にしてください）。入力ミスの可能性があります。'
+                    );
                 }
             }
         });
@@ -82,7 +107,8 @@ class TimeCalcController extends Controller
                 ->withInput();
         }
 
-        // ⑤ 計算（行別時間 + カテゴリ別合計 + 合計 + コピペテキスト）
+        // ⑤ 計算（0.25h 単位） + 集計（カテゴリ別 / 合計） + コピペ用テキスト
+        // 会社の正式カテゴリが決まったら、ここを差し替える
         $categoryLabels = [
             'task1' => 'タスク1',
             'task2' => 'タスク2',
@@ -95,19 +121,22 @@ class TimeCalcController extends Controller
 
         foreach ($filledRows as $i => $row) {
             $category = $row['category'];
-            $start = $row['start'];
-            $end = $row['end'];
+            $start    = $row['start'];
+            $end      = $row['end'];
 
             $minutes = $this->diffMinutesAllowOvernight($start, $end);
-            $hours = round($minutes / 60, 2);
+
+            // 15分刻み前提: quarters * 0.25
+            $quarters = intdiv($minutes, self::STEP_MINUTES);
+            $hours = $quarters * 0.25;
 
             $rowHours[$i] = $hours;
 
-            $categoryTotals[$category] = ($categoryTotals[$category] ?? 0) + $hours;
+            $categoryTotals[$category] = ($categoryTotals[$category] ?? 0.0) + $hours;
             $totalHours += $hours;
         }
 
-        // コピペ用テキスト生成
+        // コピペ用テキスト生成（カテゴリ別 + 合計）
         $lines = [];
         foreach ($categoryTotals as $cat => $hours) {
             $label = $categoryLabels[$cat] ?? $cat;
@@ -124,7 +153,21 @@ class TimeCalcController extends Controller
                 'totalHours' => $totalHours,
                 'copyText' => $copyText,
                 'categoryLabels' => $categoryLabels,
+                'maxHoursPerRow' => self::MAX_HOURS_PER_ROW,
+                'stepMinutes' => self::STEP_MINUTES,
             ]);
+    }
+
+    private function isQuarterTime(string $time): bool
+    {
+        // "HH:MM"
+        $parts = explode(':', $time);
+        if (count($parts) !== 2) {
+            return false;
+        }
+
+        $mm = (int) $parts[1];
+        return in_array($mm, [0, 15, 30, 45], true);
     }
 
     private function diffMinutesAllowOvernight(string $start, string $end): int
@@ -135,7 +178,7 @@ class TimeCalcController extends Controller
         $startMin = $sh * 60 + $sm;
         $endMin   = $eh * 60 + $em;
 
-        // end < start の場合は翌日扱い
+        // end < start の場合は翌日扱い（夜間作業）
         if ($endMin < $startMin) {
             $endMin += 24 * 60;
         }
