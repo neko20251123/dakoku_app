@@ -36,6 +36,13 @@
         $minutesOptions = ['00', '15', '30', '45'];
     @endphp
 
+    <datalist id="category-options">
+        <option value="開発">
+        <option value="調査">
+        <option value="保守">
+        <option value="会議">
+    </datalist>
+
     <form id="timecalc-form" method="POST" action="{{ route('timecalc.calculate') }}">
         @csrf
 
@@ -52,12 +59,14 @@
                 <div class="task-row" data-row style="margin: 8px 0; padding: 8px; border: 1px solid #ddd;">
                     <label style="display:block; margin-bottom:6px;">
                         カテゴリ
-                        <select name="rows[{{ $i }}][category]">
-                            <option value="">選択してください</option>
-                            <option value="task1" @selected(($row['category'] ?? '') === 'task1')>タスク1（仮）</option>
-                            <option value="task2" @selected(($row['category'] ?? '') === 'task2')>タスク2（仮）</option>
-                            <option value="task3" @selected(($row['category'] ?? '') === 'task3')>タスク3（仮）</option>
-                        </select>
+                        <input
+                            type="text"
+                            name="rows[{{ $i }}][category]"
+                            list="category-options"
+                            value="{{ $row['category'] ?? '' }}"
+                            placeholder="例：開発 / 調査 / 保守 / 会議"
+                        >
+                        ←自由に入力できます
                     </label>
 
                     {{-- UIは時・分をselectで固定 --}}
@@ -105,6 +114,7 @@
                         時間：<strong>{{ isset($result['rowHours'][$i]) ? number_format($result['rowHours'][$i], 2) : '--' }}</strong> h
                     </span>
 
+                    <button type="button" data-clear-row>クリア</button>
                     <button type="button" data-remove>削除</button>
                 </div>
             @endforeach
@@ -115,6 +125,7 @@
         <div class="actions" style="margin-top: 12px;">
             <button type="submit">計算する</button>
         </div>
+        <button type="button" id="clear-all">全クリア</button>
     </form>
 
     {{-- 結果表示 --}}
@@ -129,12 +140,12 @@
         <div class="task-row" data-row style="margin: 8px 0; padding: 8px; border: 1px solid #ddd;">
             <label style="display:block; margin-bottom:6px;">
                 カテゴリ
-                <select name="rows[__INDEX__][category]">
-                    <option value="">選択してください</option>
-                    <option value="task1">タスク1（仮）</option>
-                    <option value="task2">タスク2（仮）</option>
-                    <option value="task3">タスク3（仮）</option>
-                </select>
+                <input
+                    type="text"
+                    name="rows[__INDEX__][category]"
+                    list="category-options"
+                    placeholder="例：開発 / 調査 / 保守 / 会議"
+                />
             </label>
 
             <label style="margin-right:12px;">
@@ -186,6 +197,7 @@
                 時間：<strong>--</strong> h
             </span>
 
+            <button type="button" data-clear-row>クリア</button>
             <button type="button" data-remove>削除</button>
         </div>
     </template>
