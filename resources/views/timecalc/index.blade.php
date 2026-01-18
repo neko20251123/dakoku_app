@@ -33,9 +33,6 @@
         $rows = old('rows') ?? [ ['category' => '', 'start' => '', 'end' => ''] ];
 
         $result = session('result');
-        $totals = $result['categoryTotals'] ?? [];
-        $labels = $result['categoryLabels'] ?? [];
-
         $minutesOptions = ['00', '15', '30', '45'];
     @endphp
 
@@ -126,8 +123,6 @@
             <ul id="category-totals"></ul>
         <h2>合計時間</h2>
         <p><strong id="total-hours">--</strong> h</p>
-        <h2>コピペ用テキスト</h2>
-        <textarea id="copy-text" rows="6" cols="40" readonly></textarea>
     </section>
     {{-- 追加行テンプレ（時・分select固定 + hidden start/end） --}}
     <template id="task-row-template">
