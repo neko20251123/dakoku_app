@@ -104,12 +104,8 @@
                     <input type="hidden" name="rows[{{ $i }}][start]" value="{{ $start }}">
                     <input type="hidden" name="rows[{{ $i }}][end]"   value="{{ $end }}">
 
-                    <span class="task-duration" style="margin-right:12px;">
-                        時間：
-                        <strong>
-                            {{ isset($result['rowHours'][$i]) ? number_format($result['rowHours'][$i], 2) : '--' }}
-                        </strong>
-                        h
+                    <span class="task-duration">
+                        時間：<strong>{{ isset($result['rowHours'][$i]) ? number_format($result['rowHours'][$i], 2) : '--' }}</strong> h
                     </span>
 
                     <button type="button" data-remove>削除</button>
@@ -125,26 +121,14 @@
     </form>
 
     {{-- 結果表示 --}}
-    <section class="summary" style="margin-top: 18px; padding-top: 12px; border-top: 1px solid #ddd;">
+    <section class="summary">
         <h2>カテゴリ別合計</h2>
-
-        @if (!empty($totals))
-            <ul>
-                @foreach ($totals as $cat => $hours)
-                    <li>{{ $labels[$cat] ?? $cat }}：{{ number_format($hours, 2) }} h</li>
-                @endforeach
-            </ul>
-
-            <h2>合計時間</h2>
-            <p><strong>{{ number_format($result['totalHours'], 2) }}</strong> h</p>
-
-            <h2>コピペ用テキスト</h2>
-            <textarea rows="6" cols="40" readonly>{{ $result['copyText'] }}</textarea>
-        @else
-            <p>まだ計算されていません。</p>
-        @endif
+            <ul id="category-totals"></ul>
+        <h2>合計時間</h2>
+        <p><strong id="total-hours">--</strong> h</p>
+        <h2>コピペ用テキスト</h2>
+        <textarea id="copy-text" rows="6" cols="40" readonly></textarea>
     </section>
-
     {{-- 追加行テンプレ（時・分select固定 + hidden start/end） --}}
     <template id="task-row-template">
         <div class="task-row" data-row style="margin: 8px 0; padding: 8px; border: 1px solid #ddd;">
@@ -203,7 +187,7 @@
             <input type="hidden" name="rows[__INDEX__][start]" value="">
             <input type="hidden" name="rows[__INDEX__][end]" value="">
 
-            <span class="task-duration" style="margin-right:12px;">
+            <span class="task-duration">
                 時間：<strong>--</strong> h
             </span>
 
@@ -213,48 +197,193 @@
 
     {{-- JS（行追加/削除 + index詰め + select→hidden(HH:MM)組み立て） --}}
     <script>
-    (() => {
-      const maxRows = 6;
-      const rowsEl = document.getElementById('task-rows');
-      const addBtn = document.getElementById('add-row');
-      const tpl = document.getElementById('task-row-template');
-      const form = document.getElementById('timecalc-form');
+        (() => {
+        const maxRows = 6;
+        const MAX_HOURS_PER_ROW = 20;
 
-      function renumber() {
+        const rowsEl = document.getElementById('task-rows');
+        const addBtn = document.getElementById('add-row');
+        const tpl = document.getElementById('task-row-template');
+        const form = document.getElementById('timecalc-form');
+
+        // サマリー更新先
+        const totalsEl = document.getElementById('category-totals');
+        const totalHoursEl = document.getElementById('total-hours');
+        const copyTextEl = document.getElementById('copy-text');
+
+        // カテゴリの表示名（Controller側と合わせておく）
+        const categoryLabels = {
+            task1: 'タスク1',
+            task2: 'タスク2',
+            task3: 'タスク3',
+        };
+
+    function renumber() {
         const rows = rowsEl.querySelectorAll('[data-row]');
         rows.forEach((row, i) => {
-          // rows[...] と rows_ui[...] の両方を詰め直す
-          row.querySelectorAll('select, input').forEach(el => {
+        row.querySelectorAll('select, input').forEach(el => {
             el.name = el.name
-              .replace(/rows\[\d+\]/, `rows[${i}]`)
-              .replace(/rows_ui\[\d+\]/, `rows_ui[${i}]`);
-          });
+            .replace(/rows\[\d+\]/, `rows[${i}]`)
+            .replace(/rows_ui\[\d+\]/, `rows_ui[${i}]`);
         });
-      }
+        });
+    }
 
-      function updateAddState() {
+    function updateAddState() {
         const count = rowsEl.querySelectorAll('[data-row]').length;
         addBtn.disabled = count >= maxRows;
-      }
+    }
 
-      function buildHiddenTimes() {
+    function parseHHMMToMinutes(hhmm) {
+        if (!hhmm || !hhmm.includes(':')) return null;
+        const [h, m] = hhmm.split(':').map(n => parseInt(n, 10));
+        if (Number.isNaN(h) || Number.isNaN(m)) return null;
+        return h * 60 + m;
+    }
+
+    function diffMinutesAllowOvernight(startHHMM, endHHMM) {
+        const s = parseHHMMToMinutes(startHHMM);
+        const e = parseHHMMToMinutes(endHHMM);
+        if (s === null || e === null) return null;
+
+        if (s === e) return 0; // 0時間（NG扱いする）
+        let end = e;
+        if (end < s) end += 24 * 60; // 夜間またぎ
+        return end - s;
+    }
+
+    // UI select → hidden start/end(HH:MM) を組み立て
+    function buildHiddenTimes() {
         const rows = rowsEl.querySelectorAll('[data-row]');
         rows.forEach((row, i) => {
-          const sh = row.querySelector(`select[name="rows_ui[${i}][start_h]"]`)?.value || '';
-          const sm = row.querySelector(`select[name="rows_ui[${i}][start_m]"]`)?.value || '';
-          const eh = row.querySelector(`select[name="rows_ui[${i}][end_h]"]`)?.value || '';
-          const em = row.querySelector(`select[name="rows_ui[${i}][end_m]"]`)?.value || '';
+        const sh = row.querySelector(`select[name="rows_ui[${i}][start_h]"]`)?.value || '';
+        const sm = row.querySelector(`select[name="rows_ui[${i}][start_m]"]`)?.value || '';
+        const eh = row.querySelector(`select[name="rows_ui[${i}][end_h]"]`)?.value || '';
+        const em = row.querySelector(`select[name="rows_ui[${i}][end_m]"]`)?.value || '';
 
-          const startHidden = row.querySelector(`input[name="rows[${i}][start]"]`);
-          const endHidden   = row.querySelector(`input[name="rows[${i}][end]"]`);
+        const startHidden = row.querySelector(`input[name="rows[${i}][start]"]`);
+        const endHidden   = row.querySelector(`input[name="rows[${i}][end]"]`);
 
-          // 片方だけ選ばれたらサーバでrequiredに引っかかるので、ここでは組み立てだけ
-          startHidden.value = (sh && sm) ? `${sh}:${sm}` : '';
-          endHidden.value   = (eh && em) ? `${eh}:${em}` : '';
+        startHidden.value = (sh && sm) ? `${sh}:${sm}` : '';
+        endHidden.value   = (eh && em) ? `${eh}:${em}` : '';
         });
-      }
+    }
 
-      addBtn.addEventListener('click', () => {
+    function setRowHours(rowEl, hoursOrNull) {
+        const strong = rowEl.querySelector('.task-duration strong');
+        if (!strong) return;
+        strong.textContent = (hoursOrNull === null) ? '--' : hoursOrNull.toFixed(2);
+    }
+
+    function setRowError(rowEl, message) {
+        // 行エラー表示用（存在しなければ作る）
+        let err = rowEl.querySelector('[data-row-error]');
+        if (!message) {
+        if (err) err.remove();
+        rowEl.style.borderColor = '#ddd';
+        return;
+        }
+        if (!err) {
+        err = document.createElement('div');
+        err.setAttribute('data-row-error', '1');
+        err.style.marginTop = '6px';
+        err.style.color = '#b00020';
+        err.style.fontSize = '0.9em';
+        rowEl.appendChild(err);
+        }
+        err.textContent = message;
+        rowEl.style.borderColor = '#f00';
+    }
+
+    function updateRealtimeCalculation() {
+        buildHiddenTimes();
+
+        const rows = rowsEl.querySelectorAll('[data-row]');
+        const categoryTotals = {};
+        let totalHours = 0;
+
+        rows.forEach((rowEl, i) => {
+        const category = rowEl.querySelector(`select[name="rows[${i}][category]"]`)?.value || '';
+        const start = rowEl.querySelector(`input[name="rows[${i}][start]"]`)?.value || '';
+        const end   = rowEl.querySelector(`input[name="rows[${i}][end]"]`)?.value || '';
+
+        // 何も入力されてない行は無視
+        const hasAny = category || start || end;
+
+        if (!hasAny) {
+            setRowHours(rowEl, null);
+            setRowError(rowEl, '');
+            return;
+        }
+
+        // 片方だけ入力（start/end）などを即エラー
+        if (!category) {
+            setRowHours(rowEl, null);
+            setRowError(rowEl, 'カテゴリを選択してください。');
+            return;
+        }
+        if (!start || !end) {
+            setRowHours(rowEl, null);
+            setRowError(rowEl, '開始・終了の時刻を両方選択してください。');
+            return;
+        }
+
+        const diffMin = diffMinutesAllowOvernight(start, end);
+
+        if (diffMin === 0) {
+            setRowHours(rowEl, null);
+            setRowError(rowEl, '0時間（開始＝終了）は不可です。');
+            return;
+        }
+        if (diffMin === null) {
+            setRowHours(rowEl, null);
+            setRowError(rowEl, '時刻の形式が不正です。');
+            return;
+        }
+        if (diffMin > MAX_HOURS_PER_ROW * 60) {
+            setRowHours(rowEl, null);
+            setRowError(rowEl, `勤務時間が長すぎます（${MAX_HOURS_PER_ROW}時間以内）。`);
+            return;
+        }
+
+        // 15分刻みはUIで固定だが、念のため
+        if (diffMin % 15 !== 0) {
+            setRowHours(rowEl, null);
+            setRowError(rowEl, '15分刻みで入力してください。');
+            return;
+        }
+
+        const hours = (diffMin / 15) * 0.25;
+        setRowHours(rowEl, hours);
+        setRowError(rowEl, '');
+
+        categoryTotals[category] = (categoryTotals[category] || 0) + hours;
+        totalHours += hours;
+        });
+
+        // サマリー更新
+        if (totalsEl) totalsEl.innerHTML = '';
+        const lines = [];
+
+        Object.keys(categoryTotals).forEach(cat => {
+        const label = categoryLabels[cat] || cat;
+        const h = categoryTotals[cat];
+        lines.push(`${label}：${h.toFixed(2)}`);
+
+        if (totalsEl) {
+            const li = document.createElement('li');
+            li.textContent = `${label}：${h.toFixed(2)} h`;
+            totalsEl.appendChild(li);
+        }
+        });
+
+        if (totalHoursEl) totalHoursEl.textContent = (totalHours ? totalHours.toFixed(2) : '--');
+
+        lines.push(`合計：${totalHours.toFixed(2)}`);
+        if (copyTextEl) copyTextEl.value = (Object.keys(categoryTotals).length ? lines.join('\n') : '');
+    }
+
+    addBtn.addEventListener('click', () => {
         const count = rowsEl.querySelectorAll('[data-row]').length;
         if (count >= maxRows) return;
 
@@ -265,33 +394,35 @@
 
         renumber();
         updateAddState();
-      });
+        updateRealtimeCalculation();
+    });
 
-      rowsEl.addEventListener('click', (e) => {
+    rowsEl.addEventListener('click', (e) => {
         if (!e.target.matches('[data-remove]')) return;
 
         const rows = rowsEl.querySelectorAll('[data-row]');
-        if (rows.length <= 1) return; // 最低1行残す
+        if (rows.length <= 1) return;
 
         e.target.closest('[data-row]').remove();
         renumber();
         updateAddState();
-      });
+        updateRealtimeCalculation();
+    });
 
-      // select変更時にhiddenを更新（UX：計算押す前に整う）
-      rowsEl.addEventListener('change', (e) => {
-        if (e.target.matches('[data-time-select]')) {
-          buildHiddenTimes();
+    // 入力が変わるたびに即時計算
+    rowsEl.addEventListener('change', (e) => {
+        if (e.target.matches('select')) {
+        updateRealtimeCalculation();
         }
-      });
+    });
 
-      // 送信直前にも必ず同期
-      form.addEventListener('submit', () => {
-        buildHiddenTimes();
-      });
+    // 送信直前も同期（ハイブリッドの保険）
+    form.addEventListener('submit', () => {
+        updateRealtimeCalculation();
+    });
 
-      updateAddState();
-      buildHiddenTimes();
+    updateAddState();
+    updateRealtimeCalculation();
     })();
-    </script>
+</script>
 @endsection
