@@ -228,6 +228,15 @@
         <div class="text-3xl font-extrabold text-blue-900">
           <span id="total-hours">--</span><span class="text-base font-semibold text-blue-800 ml-1">h</span>
         </div>
+         {{-- ひとことコメント --}}
+        @if (session('toast_message'))
+        <div
+            id="toast-message"
+            class="mt-3 rounded-lg border border-blue-200 bg-white/70 px-3 py-2 text-sm text-slate-800"
+        >
+            {{ session('toast_message') }}
+        </div>
+        @endif
         <div class="mt-2 text-xs text-blue-900/70">
           入力ミス防止のため、1行あたり最大20時間までです。
         </div>

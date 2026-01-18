@@ -363,6 +363,9 @@
     updateRealtimeCalculation();
     const firstCat = rowsEl.querySelector('input[name$="[category]"]');
     if (firstCat) firstCat.focus();
+
+    const toast = document.getElementById('toast-message');
+    if (toast) toast.remove();
   });
 }
 
