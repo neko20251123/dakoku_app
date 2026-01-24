@@ -10,5 +10,11 @@ use App\Http\Controllers\TimeCalcController;
 
 Route::get('/', [TimeCalcController::class, 'index'])->name('timecalc.index');
 
-Route::post('/calculate', [TimeCalcController::class, 'calculate'])
-    ->name('timecalc.calculate');
+// 非同期じゃない時の計算処理
+// 非同期を実装したのでコメントアウト
+// Route::post('/calculate', [TimeCalcController::class, 'calculate'])
+//     ->name('timecalc.calculate');
+
+// 非同期通信
+Route::post('/calculate-json', [TimeCalcController::class, 'calculateJson'])
+    ->name('timecalc.calculateJson');
