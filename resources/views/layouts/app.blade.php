@@ -7,9 +7,7 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
-<body>
-    <div class="container">
-        @yield('content')
-    </div>
+<body class="bg-slate-100">
+    @yield('content')
 </body>
 </html>
